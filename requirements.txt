@@ -1,5 +1,6 @@
 ﻿discord.py==2.4.0
 python-dotenv==1.0.1
+Pillow==12.2.0
 
 #$env:DISCORD_TOKEN="SEU_TOKEN_AQUI"
 #$env:BOT_PREFIX="!"

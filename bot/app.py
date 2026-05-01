@@ -1,23 +1,46 @@
 ﻿import discord
 from discord.ext import commands
 
-from bot.config import get_prefix, get_token
+from bot.config import get_prefix, get_token, get_menu_channel_id
 from bot.ui.main_menu import MainMenuView
 
 
+class EscrivaoBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(command_prefix=get_prefix(), intents=intents)
+
+    async def setup_hook(self) -> None:
+        # Registra a view para ela continuar funcionando apos reiniciar o bot
+        self.add_view(MainMenuView())
+
+    async def on_ready(self) -> None:
+        print(f"Conectado como {self.user} (id={self.user.id})")
+
+        channel_id = get_menu_channel_id()
+        if channel_id:
+            channel = self.get_channel(channel_id)
+            if channel:
+                print(f"Garantindo menu fixo no canal: {channel.name}")
+                # Apaga as mensagens anteriores do bot neste canal
+                async for msg in channel.history(limit=50):
+                    if msg.author == self.user:
+                        try:
+                            await msg.delete()
+                        except discord.HTTPException:
+                            pass
+
+                # Envia o menu limpo e atualizado
+                await channel.send("🚀 **Menu Principal**", view=MainMenuView())
+
+
 def create_bot() -> commands.Bot:
-    intents = discord.Intents.default()
-    intents.message_content = True
-
-    bot = commands.Bot(command_prefix=get_prefix(), intents=intents)
-
-    @bot.event
-    async def on_ready() -> None:
-        print(f"Conectado como {bot.user} (id={bot.user.id})")
+    bot = EscrivaoBot()
 
     @bot.command(name="menu")
     async def menu(ctx: commands.Context) -> None:
-        await ctx.send("Menu principal:", view=MainMenuView())
+        await ctx.send("🚀 **Menu Principal**", view=MainMenuView())
 
     return bot
 
