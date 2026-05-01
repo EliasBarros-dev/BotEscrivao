@@ -59,11 +59,11 @@ class LimpezaFichaModal(Modal, title='Formulario: Limpeza de Ficha'):
         }
 
         MEU_LAYOUT = {
-            "Nome completo": {"box": (50, 100, 380, 150), "size": 28, "color": "black", "valign": "center"},
-            "passaporte": {"box": (420, 100, 750, 150), "size": 24, "color": "darkblue", "valign": "center"},
-            "motivo da limpeza": {"box": (50, 200, 750, 300), "size": 20, "color": "black", "valign": "top"},
-            "crimes cometidos": {"box": (50, 330, 750, 430), "size": 18, "color": "darkred", "valign": "top"},
-            "Quantidade de Prisoes Anteriores": {"box": (300, 480, 500, 550), "size": 36, "color": "purple", "valign": "center"}
+            "Nome completo": {"box": (205, 310, 647, 327), "size": 15, "color": "black", "valign": "center", "halign": "left"},
+            "passaporte": {"box": (171, 327, 295, 345), "size": 15, "color": "black", "valign": "center", "halign": "left"},
+            "motivo da limpeza": {"box": (83, 370, 632, 410), "size": 15, "color": "black", "valign": "top", "halign": "left"},
+            "crimes cometidos": {"box": (85, 440, 632, 465), "size": 15, "color": "black", "valign": "top", "halign": "left"},
+            "Quantidade de Prisoes Anteriores": {"box": (327, 475, 381, 485), "size": 15, "color": "black", "valign": "center", "halign": "left"}
         }
 
         template_path = "img/base.png"
@@ -101,9 +101,10 @@ class CrimeSelectView(View):
             options = []
             for art in chunk:
                 # Cada item do Select vai usar o titulo.
-                # (Discord description max: 100 chars, Label max: 100 chars)
                 lbl = art.get("titulo", "Crime")[:100]
-                desc = art.get("descricao", "")[:100]
+                # Modificado para usar o codigo em vez da descricao
+                codigo = art.get("codigo", "")
+                desc = f"Artigo {codigo}" if codigo else ""
                 val = art.get("titulo", "Crime")[:100]
                 options.append(discord.SelectOption(label=lbl, description=desc, value=val))
 

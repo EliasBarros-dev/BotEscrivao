@@ -44,9 +44,10 @@ class ImageTemplateRenderer:
         font: ImageFont.FreeTypeFont,
         color: str | tuple,
         valign: str = "center",
+        halign: str = "center",
         line_spacing: int = 4
     ) -> None:
-        """Desenha o texto centralizado horizontalmente e alinhado verticalmente dentro de uma caixa."""
+        """Desenha o texto alinhado horizontalmente e verticalmente dentro de uma caixa."""
         x1, y1, x2, y2 = box
         box_width = x2 - x1
         box_height = y2 - y1
@@ -68,12 +69,18 @@ class ImageTemplateRenderer:
         else: # top
             current_y = y1
 
-        # Desenhar cada linha centralizada horizontalmente
+        # Desenhar cada linha
         for line in lines:
-            line_width = font.getlength(line)
-            current_x = x1 + (box_width - line_width) // 2
+            line_width = int(font.getlength(line))
 
-            # anchor="la" significa (left, ascender), mas como calculamos manualmete 'la' eh previsivel com y=ascent offset
+            # Alinhamento horizontal (halign)
+            if halign == "left":
+                current_x = x1
+            elif halign == "right":
+                current_x = x2 - line_width
+            else: # center padrao
+                current_x = x1 + (box_width - line_width) // 2
+
             draw.text((current_x, current_y), line, font=font, fill=color)
             current_y += line_height + line_spacing
 
@@ -99,6 +106,7 @@ class ImageTemplateRenderer:
             font_path = config.get("font_path", "arial.ttf")
             font_size = config.get("size", 20)
             valign = config.get("valign", "center")
+            halign = config.get("halign", "center")
 
             # Carregar a fonte. Se nao achar o arquivo, carrega a padrao (sem suporte a mudanca de tamanho ideal)
             try:
@@ -112,7 +120,7 @@ class ImageTemplateRenderer:
                 draw.rectangle(box, outline="red", width=2)
 
             if box:
-                self._draw_centered_text(draw, text, box, font, color, valign=valign)
+                self._draw_centered_text(draw, text, box, font, color, valign=valign, halign=halign)
             else:
                 # Caso o usuario mande apenas 'pos' (x, y) fixo em vez de caixa limitadora
                 pos = config.get("pos", (0, 0))
