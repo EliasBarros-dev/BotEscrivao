@@ -24,14 +24,14 @@ class LimpezaFichaModal(Modal, title='Formulario: Limpeza de Ficha'):
         label='Passaporte',
         placeholder='Ex: 12345',
         required=True,
-        max_length=20
+        max_length=10
     )
     motivo = TextInput(
         label='Motivo da Limpeza',
         style=discord.TextStyle.paragraph,
         placeholder='Ex: Cumpriu servico comunitario...',
         required=True,
-        max_length=500
+        max_length=130
     )
     prisoes = TextInput(
         label='Quant. de Prisoes Anteriores',
@@ -60,8 +60,8 @@ class LimpezaFichaModal(Modal, title='Formulario: Limpeza de Ficha'):
 
         MEU_LAYOUT = {
             "Nome completo": {"box": (205, 310, 647, 327), "size": 15, "color": "black", "valign": "center", "halign": "left"},
-            "passaporte": {"box": (171, 327, 295, 345), "size": 15, "color": "black", "valign": "center", "halign": "left"},
-            "motivo da limpeza": {"box": (83, 370, 632, 410), "size": 15, "color": "black", "valign": "top", "halign": "left"},
+            "passaporte": {"box": (171, 333, 295, 345), "size": 15, "color": "black", "valign": "center", "halign": "left"},
+            "motivo da limpeza": {"box": (83, 370, 615, 410), "size": 15, "color": "black", "valign": "top", "halign": "left"},
             "crimes cometidos": {"box": (85, 440, 632, 465), "size": 15, "color": "black", "valign": "top", "halign": "left"},
             "Quantidade de Prisoes Anteriores": {"box": (327, 475, 381, 485), "size": 15, "color": "black", "valign": "center", "halign": "left"}
         }

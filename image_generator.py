@@ -16,25 +16,39 @@ class ImageTemplateRenderer:
         self.debug = debug
 
     def _wrap_text(self, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
-        """Quebra o texto em multiplas linhas para caber na largura especificada."""
-        words = text.split(" ")
-        lines = []
-        current_line = []
+        """Quebra texto respeitando largura e quebras de linha (\n)."""
 
-        for word in words:
-            current_line.append(word)
-            line_w = int(font.getlength(" ".join(current_line)))
-            
-            if line_w > max_width and len(current_line) > 1:
-                # O comprimento estourou, remove a ultima palavra e fecha a linha
-                current_line.pop()
-                lines.append(" ".join(current_line))
-                current_line = [word]
+        final_lines = []
 
-        if current_line:
-            lines.append(" ".join(current_line))
+        # separa por ENTER (parágrafos)
+        paragraphs = text.split("\n")
 
-        return lines
+        for paragraph in paragraphs:
+            words = paragraph.split(" ")
+            current_line = []
+
+            for word in words:
+                test_line = " ".join(current_line + [word])
+                line_w = int(font.getlength(test_line))
+
+                if line_w <= max_width:
+                    current_line.append(word)
+                else:
+                    if current_line:
+                        final_lines.append(" ".join(current_line))
+                    current_line = [word]
+
+            if current_line:
+                final_lines.append(" ".join(current_line))
+
+            # adiciona linha vazia entre parágrafos
+            final_lines.append("")
+
+        # remove última linha vazia extra
+        if final_lines and final_lines[-1] == "":
+            final_lines.pop()
+
+        return final_lines
 
     def _draw_centered_text(
         self,
