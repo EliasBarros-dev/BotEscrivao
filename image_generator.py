@@ -15,40 +15,42 @@ class ImageTemplateRenderer:
         self.template_path = template_path
         self.debug = debug
 
-    def _wrap_text(self, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
-        """Quebra texto respeitando largura e quebras de linha (\n)."""
+    def _wrap_text(self, text, font, max_width):
+        lines = []
 
-        final_lines = []
-
-        # separa por ENTER (parágrafos)
-        paragraphs = text.split("\n")
-
-        for paragraph in paragraphs:
+        for paragraph in text.split("\n"):
             words = paragraph.split(" ")
-            current_line = []
+            current_line = ""
 
             for word in words:
-                test_line = " ".join(current_line + [word])
-                line_w = int(font.getlength(test_line))
+                test_line = word if not current_line else current_line + " " + word
+                width = font.getlength(test_line)
 
-                if line_w <= max_width:
-                    current_line.append(word)
+                if width <= max_width:
+                    current_line = test_line
                 else:
                     if current_line:
-                        final_lines.append(" ".join(current_line))
-                    current_line = [word]
+                        lines.append(current_line)
+
+                    # 🔥 quebra palavra grande se necessário
+                    while font.getlength(word) > max_width:
+                        for i in range(len(word), 0, -1):
+                            if font.getlength(word[:i]) <= max_width:
+                                lines.append(word[:i])
+                                word = word[i:]
+                                break
+
+                    current_line = word
 
             if current_line:
-                final_lines.append(" ".join(current_line))
+                lines.append(current_line)
 
-            # adiciona linha vazia entre parágrafos
-            final_lines.append("")
+            lines.append("")
 
-        # remove última linha vazia extra
-        if final_lines and final_lines[-1] == "":
-            final_lines.pop()
+        if lines and lines[-1] == "":
+            lines.pop()
 
-        return final_lines
+        return lines
 
     def _draw_centered_text(
         self,
