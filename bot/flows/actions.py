@@ -1,7 +1,11 @@
 ﻿import os
 import json
 import discord
-from discord import Interaction
+import io
+import asyncio
+import random
+import string
+from discord import Interaction, PermissionOverwrite
 from discord.ui import Modal, TextInput, View, Select
 
 from image_generator import ImageTemplateRenderer
@@ -104,26 +108,23 @@ class ResponsavelOficioModal(Modal, title='Dados do Responsavel'):
             "passaporte": {"box": (171, 333, 295, 345), "size": 15, "color": "black", "valign": "center", "halign": "left"},
             "motivo da limpeza": {"box": (83, 370, 615, 410), "size": 15, "color": "black", "valign": "top", "halign": "left"},
             "crimes cometidos": {"box": (85, 440, 632, 465), "size": 15, "color": "black", "valign": "top", "halign": "left"},
-            "Quantidade de Prisoes Anteriores": {"box": (327, 509, 381, 518), "size": 15, "color": "black", "valign": "center", "halign": "left"},
-
-            # 🔥 novos campos
-            "responsavel": {"box": (86, 800, 649, 820), "size": 15, "color": "black", "halign": "left"},
-            "oficio": {"box": (368, 80, 438, 87), "size": 15, "color": "black", "halign": "center"},
+            "Quantidade de Prisoes Anteriores": {"box": (327, 510, 381, 518), "size": 15, "color": "black", "valign": "center", "halign": "left"},
+            "responsavel": {"box": (86, 800, 649, 820), "size": 15, "color": "black", "halign": "center"},
+            "oficio": {"box": (368, 80, 438, 87), "size": 15, "color": "black", "halign": "left"},
         }
 
         template_path = "img/base.png"
         renderer = ImageTemplateRenderer(template_path, debug=False)
 
-        output_file = f"resultado_{interaction.user.id}.png"
-        renderer.render(output_file, self.dados_base, MEU_LAYOUT)
+        image_bytes = renderer.render_bytes(self.dados_base, MEU_LAYOUT, fmt="PNG")
+        file_obj = io.BytesIO(image_bytes)
+        file_obj.seek(0)
+        discord_file = discord.File(file_obj, filename="ficha.png")
 
         await interaction.followup.send(
             content="Ficha gerada com sucesso!",
-            file=discord.File(output_file, filename="ficha.png")
+            file=discord_file
         )
-
-        if os.path.exists(output_file):
-            os.remove(output_file)
 
 class CrimeSelectView(View):
     def __init__(self, artigos: list):
@@ -186,13 +187,28 @@ async def handle_limpeza_ficha(interaction: Interaction) -> None:
         await interaction.response.send_message("Arquivo artigos.json ausente ou invalido.", ephemeral=True)
         return
 
-    # Mostra a view com os Selects de Crimes antes do Modal
+    if interaction.guild is None:
+        await interaction.response.send_message("Este comando precisa ser usado dentro de um servidor (não em DMs).", ephemeral=True)
+        return
+
+    # cria a view com os Selects de Crimes
     view = CrimeSelectView(artigos)
-    await interaction.response.send_message(
-        "Selecione todos os crimes correspondentes ao individuo (pode escolher em varias listas se precisar):",
-        view=view,
-        ephemeral=True
-    )
+
+    # cria canal temporario privado
+    try:
+        canal = await create_temp_private_channel(interaction.guild, interaction.user, name_prefix="anon", duration=120)
+    except Exception as e:
+        await interaction.response.send_message(f"Falha ao criar canal temporario: {e}", ephemeral=True)
+        return
+
+    # informar ao usuário que o canal foi criado (ephemeral)
+    await interaction.response.send_message(f"Canal temporário criado: {canal.mention} — ele será fechado em 2 minutos.", ephemeral=True)
+
+    # enviar a mensagem com a view dentro do canal privado
+    await canal.send(f"{interaction.user.mention} — aqui está seu canal temporário. Use os controles abaixo para gerar a ficha:", view=view)
+
+    # agendar exclusão automática do canal (120 segundos)
+    asyncio.create_task(schedule_delete_channel(canal, delay_seconds=120))
 
 
 async def handle_transferencia_unidade(interaction: Interaction) -> None:
@@ -200,4 +216,33 @@ async def handle_transferencia_unidade(interaction: Interaction) -> None:
         "Fluxo **Transferencia de Unidade** iniciado. (placeholder)",
         ephemeral=True,
     )
+
+async def create_temp_private_channel(guild: discord.Guild, user: discord.Member, *,
+                                      name_prefix: str = "anon", duration: int = 120) -> discord.TextChannel:
+    """
+    Cria um canal de texto que apenas 'user' e o bot podem ver.
+    Retorna o canal criado. O canal NÃO é excluído aqui — crie uma task para remover.
+    """
+    # gerar nome aleatorio para anonimato
+    rand = ''.join(random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=6))
+    channel_name = f"{name_prefix}-{rand}"
+
+    # permissões: negar view a @everyone, permitir ao user e ao bot
+    overwrites = {
+        guild.default_role: PermissionOverwrite(view_channel=False),
+        user: PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+        guild.me: PermissionOverwrite(view_channel=True, send_messages=True, manage_messages=True)
+    }
+
+    # cria o canal no topo (ou especifique category)
+    channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites, reason="Canal temporario anonimo")
+    return channel
+
+async def schedule_delete_channel(channel: discord.TextChannel, delay_seconds: int = 120):
+    await asyncio.sleep(delay_seconds)
+    try:
+        await channel.delete(reason="Canal temporario expirado")
+    except Exception as e:
+        # loga mas ignora erros (por ex. se já foi deletado manualmente)
+        print(f"Erro ao deletar canal temporario {channel.id}: {e}")
 

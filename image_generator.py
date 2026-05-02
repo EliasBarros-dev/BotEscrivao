@@ -1,4 +1,5 @@
 ﻿import os
+import io
 from PIL import Image, ImageDraw, ImageFont
 
 class ImageTemplateRenderer:
@@ -147,6 +148,51 @@ class ImageTemplateRenderer:
             base_img = base_img.convert("RGB")
         base_img.save(output_path)
         print(f"Imagem gerada com sucesso e salva em '{output_path}'!")
+
+    def render_bytes(self, data: dict, layout: dict, fmt: str = "PNG") -> bytes:
+        """
+        Renderiza a imagem na memória e retorna os bytes (PNG por padrão).
+        """
+        # Reutiliza a lógica de abertura e desenho do método render:
+        base_img = Image.open(self.template_path).convert("RGBA")
+        draw = ImageDraw.Draw(base_img)
+
+        for key, config in layout.items():
+            if key not in data:
+                continue
+
+            text = str(data[key])
+            box = config.get("box")
+            color = config.get("color", "black")
+            font_path = config.get("font_path", "arial.ttf")
+            font_size = config.get("size", 20)
+            valign = config.get("valign", "center")
+            halign = config.get("halign", "center")
+
+            try:
+                font = ImageFont.truetype(font_path, font_size)
+            except Exception:
+                font = ImageFont.load_default()
+
+            if self.debug and box:
+                draw.rectangle(box, outline="red", width=2)
+
+            if box:
+                self._draw_centered_text(draw, text, box, font, color, valign=valign, halign=halign)
+            else:
+                pos = config.get("pos", (0, 0))
+                draw.text(pos, text, font=font, fill=color)
+
+        # salvar em BytesIO e retornar bytes
+        buffer = io.BytesIO()
+        save_fmt = fmt.upper()
+        if save_fmt == "JPG":
+            rgb = base_img.convert("RGB")
+            rgb.save(buffer, format="JPEG")
+        else:
+            base_img.save(buffer, format=save_fmt)
+        buffer.seek(0)
+        return buffer.read()
 
 
 # =========================================================
