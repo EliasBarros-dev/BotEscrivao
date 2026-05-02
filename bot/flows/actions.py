@@ -8,6 +8,7 @@ import string
 from discord import Interaction, PermissionOverwrite
 from discord.ui import Modal, TextInput, View, Select
 from image_generator import ImageTemplateRenderer
+from datetime import datetime
 
 scheduled_deletes: dict[int, asyncio.Task] = {}
 
@@ -104,6 +105,17 @@ class ResponsavelOficioModal(Modal, title='Dados do Responsavel'):
         self.dados_base["responsavel"] = self.responsavel.value
         self.dados_base["oficio"] = self.oficio.value
 
+        # data automática em português (ex: "02 de maio de 2026")
+        _mes_names = [
+            "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+            "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
+        ]
+        now = datetime.now()
+        date_str = f"{now.day:02d} de {_mes_names[now.month - 1]} de {now.year}"
+
+        # anexa ao dicionário de dados para renderização
+        self.dados_base["data"] = date_str
+
         MEU_LAYOUT = {
             "Nome completo": {"box": (205, 310, 647, 327), "size": 15, "color": "black", "valign": "center", "halign": "left"},
             "passaporte": {"box": (171, 333, 295, 345), "size": 15, "color": "black", "valign": "center", "halign": "left"},
@@ -112,6 +124,7 @@ class ResponsavelOficioModal(Modal, title='Dados do Responsavel'):
             "Quantidade de Prisoes Anteriores": {"box": (327, 510, 381, 518), "size": 15, "color": "black", "valign": "center", "halign": "left"},
             "responsavel": {"box": (86, 800, 649, 820), "size": 15, "color": "black", "halign": "center"},
             "oficio": {"box": (368, 80, 438, 87), "size": 15, "color": "black", "halign": "left"},
+            "data": {"box": (325, 905, 478, 915), "size": 15, "color": "black", "valign": "center", "halign": "left"},
         }
 
         template_path = "img/base.png"
