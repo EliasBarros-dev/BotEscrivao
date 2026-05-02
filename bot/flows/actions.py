@@ -7,8 +7,9 @@ import random
 import string
 from discord import Interaction, PermissionOverwrite
 from discord.ui import Modal, TextInput, View, Select
-
 from image_generator import ImageTemplateRenderer
+
+scheduled_deletes: dict[int, asyncio.Task] = {}
 
 def carregar_artigos():
     try:
@@ -121,10 +122,20 @@ class ResponsavelOficioModal(Modal, title='Dados do Responsavel'):
         file_obj.seek(0)
         discord_file = discord.File(file_obj, filename="ficha.png")
 
+        channel = interaction.channel  # canal onde a modal foi invocada (deveria ser o canal temporário)
+        delete_view = DeleteChannelView(channel, owner_id=interaction.user.id)
+
+        # aqui respondemos com a imagem e adicionamos o botão ao mesmo tempo
         await interaction.followup.send(
-            content="Ficha gerada com sucesso!",
-            file=discord_file
+            content="Ficha gerada com sucesso! Use o botão abaixo para encerrar este canal antes de 2 minutos, se desejar.",
+            file=discord_file,
+            view=delete_view
         )
+
+        # agendar exclusão do canal em 120s (2 minutos) e armazenar a task para poder cancelar
+        if channel is not None:
+            task = asyncio.create_task(schedule_delete_channel(channel, delay_seconds=120))
+            scheduled_deletes[channel.id] = task
 
 class CrimeSelectView(View):
     def __init__(self, artigos: list):
@@ -180,6 +191,37 @@ class CrimeSelectView(View):
         # Agora sim avanca pro Modal de texto passando os crimes escolhidos
         await interaction.response.send_modal(LimpezaFichaModal(todos_crimes))
 
+class DeleteChannelView(View):
+    def __init__(self, channel: discord.TextChannel, owner_id: int):
+        super().__init__(timeout=None)
+        self.channel = channel
+        self.owner_id = owner_id
+
+    @discord.ui.button(label="Fechar canal agora", style=discord.ButtonStyle.danger)
+    async def close_now(self, interaction: Interaction, button: discord.ui.Button):
+        author_id = interaction.user.id
+        # Permitir se for dono do canal ou moderador com manage_channels
+        if author_id != self.owner_id and not interaction.user.guild_permissions.manage_channels:
+            await interaction.response.send_message("Apenas o dono do canal ou um moderador pode fechar o canal.", ephemeral=True)
+            return
+
+        # responder antes de deletar (ephemeral para não poluir o canal)
+        await interaction.response.send_message("Fechando o canal...", ephemeral=True)
+
+        # cancelar a task agendada, se houver
+        task = scheduled_deletes.pop(self.channel.id, None)
+        if task and not task.done():
+            task.cancel()
+
+        try:
+            await self.channel.delete(reason=f"Canal fechado por {interaction.user}")
+        except Exception as e:
+            # se nao for possivel deletar, informe o usuário
+            try:
+                await interaction.followup.send(f"Erro ao deletar canal: {e}", ephemeral=True)
+            except Exception:
+                print(f"Erro ao notificar usuario sobre falha ao deletar canal: {e}")
+
 
 async def handle_limpeza_ficha(interaction: Interaction) -> None:
     artigos = carregar_artigos()
@@ -206,9 +248,6 @@ async def handle_limpeza_ficha(interaction: Interaction) -> None:
 
     # enviar a mensagem com a view dentro do canal privado
     await canal.send(f"{interaction.user.mention} — aqui está seu canal temporário. Use os controles abaixo para gerar a ficha:", view=view)
-
-    # agendar exclusão automática do canal (120 segundos)
-    asyncio.create_task(schedule_delete_channel(canal, delay_seconds=120))
 
 
 async def handle_transferencia_unidade(interaction: Interaction) -> None:
@@ -239,10 +278,18 @@ async def create_temp_private_channel(guild: discord.Guild, user: discord.Member
     return channel
 
 async def schedule_delete_channel(channel: discord.TextChannel, delay_seconds: int = 120):
-    await asyncio.sleep(delay_seconds)
     try:
+        await asyncio.sleep(delay_seconds)
         await channel.delete(reason="Canal temporario expirado")
+    except asyncio.CancelledError:
+        # tarefa cancelada (usuário fechou manualmente)
+        return
     except Exception as e:
-        # loga mas ignora erros (por ex. se já foi deletado manualmente)
-        print(f"Erro ao deletar canal temporario {channel.id}: {e}")
+        print(f"Erro ao deletar canal temporario {getattr(channel, 'id', 'unknown')}: {e}")
+    finally:
+        # garantir que, se existir, a referência da task seja removida do dicionário
+        try:
+            scheduled_deletes.pop(channel.id, None)
+        except Exception:
+            pass
 
