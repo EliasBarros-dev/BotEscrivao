@@ -45,9 +45,8 @@ class LimpezaFichaModal(Modal, title='Formulario: Limpeza de Ficha'):
         self.crimes_selecionados = crimes_selecionados
 
     async def on_submit(self, interaction: Interaction) -> None:
-        await interaction.response.defer(ephemeral=False, thinking=True)
+        await interaction.response.defer(ephemeral=True)
 
-        # Junta todos os crimes separados por virgula/ponto
         crimes_texto = "; ".join(self.crimes_selecionados) if self.crimes_selecionados else "Nenhum crime selecionado."
 
         dados = {
@@ -58,31 +57,69 @@ class LimpezaFichaModal(Modal, title='Formulario: Limpeza de Ficha'):
             "Quantidade de Prisoes Anteriores": self.prisoes.value
         }
 
+        # 👉 agora chama o segundo passo
+        await interaction.followup.send(
+            content="Agora informe os dados do responsável:",
+            view=ContinuarView(dados),
+            ephemeral=True
+        )
+
+class ContinuarView(View):
+    def __init__(self, dados):
+        super().__init__(timeout=120)
+        self.dados = dados
+
+    @discord.ui.button(label="Preencher Responsavel e Oficio", style=discord.ButtonStyle.success)
+    async def abrir_modal(self, interaction: Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ResponsavelOficioModal(self.dados))
+
+class ResponsavelOficioModal(Modal, title='Dados do Responsavel'):
+    responsavel = TextInput(
+        label='Nome do Responsavel pela Limpeza',
+        placeholder='Ex: Sgt. Oliveira',
+        required=True,
+        max_length=100
+    )
+
+    oficio = TextInput(
+        label='Numero do Oficio',
+        placeholder='Ex: 123/2025',
+        required=True,
+        max_length=50
+    )
+
+    def __init__(self, dados_base: dict):
+        super().__init__()
+        self.dados_base = dados_base
+
+    async def on_submit(self, interaction: Interaction):
+        await interaction.response.defer(thinking=True)
+
+        # junta os dados
+        self.dados_base["responsavel"] = self.responsavel.value
+        self.dados_base["oficio"] = self.oficio.value
+
         MEU_LAYOUT = {
             "Nome completo": {"box": (205, 310, 647, 327), "size": 15, "color": "black", "valign": "center", "halign": "left"},
             "passaporte": {"box": (171, 333, 295, 345), "size": 15, "color": "black", "valign": "center", "halign": "left"},
             "motivo da limpeza": {"box": (83, 370, 615, 410), "size": 15, "color": "black", "valign": "top", "halign": "left"},
             "crimes cometidos": {"box": (85, 440, 632, 465), "size": 15, "color": "black", "valign": "top", "halign": "left"},
-            "Quantidade de Prisoes Anteriores": {"box": (327, 475, 381, 485), "size": 15, "color": "black", "valign": "center", "halign": "left"}
+            "Quantidade de Prisoes Anteriores": {"box": (327, 509, 381, 518), "size": 15, "color": "black", "valign": "center", "halign": "left"},
+
+            # 🔥 novos campos
+            "responsavel": {"box": (86, 800, 649, 820), "size": 15, "color": "black", "halign": "left"},
+            "oficio": {"box": (368, 80, 438, 87), "size": 15, "color": "black", "halign": "center"},
         }
 
         template_path = "img/base.png"
-        if not os.path.exists(template_path):
-            os.makedirs("img", exist_ok=True)
-            from PIL import Image, ImageDraw, ImageFont
-            blank = Image.new("RGBA", (800, 600), (240, 240, 240, 255))
-            d = ImageDraw.Draw(blank)
-            d.text((300, 20), "TEMPLATE BASE AUTOMATICO", fill="black", font=ImageFont.load_default())
-            blank.save(template_path)
-
         renderer = ImageTemplateRenderer(template_path, debug=False)
-        output_file = f"resultado_{interaction.user.id}.png"
-        renderer.render(output_file, dados, MEU_LAYOUT)
 
-        arquivo_discord = discord.File(output_file, filename="ficha.png")
+        output_file = f"resultado_{interaction.user.id}.png"
+        renderer.render(output_file, self.dados_base, MEU_LAYOUT)
+
         await interaction.followup.send(
-            content=f"Ficha de **{self.nome.value}** gerada com sucesso!",
-            file=arquivo_discord
+            content="Ficha gerada com sucesso!",
+            file=discord.File(output_file, filename="ficha.png")
         )
 
         if os.path.exists(output_file):
