@@ -358,10 +358,13 @@ class TransferenciaStep1Modal(Modal, title='Transferência — Passo 1: Ofício 
     async def on_submit(self, interaction: Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
 
+        _lines = [ln.strip() for ln in self.membros.value.splitlines() if ln.strip()]
+        # monta lista com bullets, sem linhas em branco extras
+        formatted_membros = "\n".join(f"• {ln}" for ln in _lines)
         dados_base = {
             "oficio": self.oficio.value,
             "descricao": self.descricao.value,
-            "membros": self.membros.value
+            "membros": formatted_membros
         }
 
         _mes_names = [
@@ -435,7 +438,15 @@ class TransferSignaturesModal(Modal, title='Transferência — Passo 2: Assinatu
         MEU_LAYOUT_TRANSFERENCIA = {
             "oficio": {"box": (325, 98, 416, 105), "size": 15, "color": "black", "halign": "left"},
             "descricao": {"box": (84, 178, 632, 602), "size": 15, "color": "black", "valign": "top", "halign": "left"},
-            "membros": {"box": (84, 322, 632, 602), "size": 13, "color": "black", "valign": "top", "halign": "left"},
+            "membros": {
+            "box": (84, 350, 632, 602),
+            "size": 13,
+            "color": "black",
+            "valign": "top",
+            "halign": "left",
+            "line_spacing": 2,
+            "style": {"bold": True, "italic": True}
+            },
             "assinante1": {"box": (91, 717, 318, 734), "size": 14, "color": "black", "halign": "center"},
             "cargo1": {"box": (91, 748, 318, 770), "size": 13, "color": "black", "halign": "center"},
             "assinante2": {"box": (396, 717, 620, 734), "size": 14, "color": "black", "halign": "center"},

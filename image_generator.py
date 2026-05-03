@@ -55,6 +55,7 @@ class ImageTemplateRenderer:
 
     def _draw_centered_text(
         self,
+        base_img: Image.Image,
         draw: ImageDraw.ImageDraw,
         text: str,
         box: tuple[int, int, int, int],
@@ -62,43 +63,86 @@ class ImageTemplateRenderer:
         color: str | tuple,
         valign: str = "center",
         halign: str = "center",
-        line_spacing: int = 4
+        line_spacing: int = 4,
+        style: dict | None = None
     ) -> None:
-        """Desenha o texto alinhado horizontalmente e verticalmente dentro de uma caixa."""
+        """Desenha o texto alinhado dentro de uma caixa, com suporte a line_spacing e estilo simples (bold/italic emulação)."""
         x1, y1, x2, y2 = box
         box_width = x2 - x1
         box_height = y2 - y1
 
-        # Quebra de linha automatica (Word Wrap)
         lines = self._wrap_text(text, font, box_width)
 
-        # Usando as caixas de contorno da fonte para determinar as alturas (ascent/descent evitam cortes)
         ascent, descent = font.getmetrics()
         line_height = ascent + descent
 
         total_text_height = (len(lines) * line_height) + ((len(lines) - 1) * line_spacing)
 
-        # Alinhamento vertical (valign)
         if valign == "center":
             current_y = y1 + (box_height - total_text_height) // 2
         elif valign == "bottom":
             current_y = y2 - total_text_height
-        else: # top
+        else:
             current_y = y1
 
-        # Desenhar cada linha
+        # estilo
+        bold = bool(style and style.get("bold"))
+        italic = bool(style and style.get("italic"))
+        # valor de cisalhamento para itálico (negativo inclina à esquerda; ajuste conforme desejado)
+        shear = style.get("italic_shear", -0.25) if style else -0.25
+
         for line in lines:
+            if line == "":
+                current_y += line_height + line_spacing
+                continue
+
             line_width = int(font.getlength(line))
 
-            # Alinhamento horizontal (halign)
             if halign == "left":
                 current_x = x1
             elif halign == "right":
                 current_x = x2 - line_width
-            else: # center padrao
+            else:
                 current_x = x1 + (box_width - line_width) // 2
 
-            draw.text((current_x, current_y), line, font=font, fill=color)
+            # Se não precisar de itálico customizado, desenha diretamente (com 'bold' emulação se pedido)
+            if not italic:
+                if bold:
+                    # desenha duas vezes com offset para "engrossar" visualmente
+                    draw.text((current_x, current_y), line, font=font, fill=color)
+                    draw.text((current_x + 1, current_y), line, font=font, fill=color)
+                else:
+                    draw.text((current_x, current_y), line, font=font, fill=color)
+            else:
+                # emulação de itálico: desenha a linha em imagem temporária e aplica affine shear
+                # cria imagem do tamanho da linha
+                tmp_w = max(1, int(line_width + abs(shear) * (line_height)))
+                tmp_h = line_height + 4
+                tmp = Image.new("RGBA", (tmp_w, tmp_h), (0, 0, 0, 0))
+                tmp_draw = ImageDraw.Draw(tmp)
+                # desenha (com ou sem bold emulação)
+                if bold:
+                    tmp_draw.text((0, 0), line, font=font, fill=color)
+                    tmp_draw.text((1, 0), line, font=font, fill=color)
+                else:
+                    tmp_draw.text((0, 0), line, font=font, fill=color)
+
+                # aplica shear (affine). Matriz = (a, b, c, d, e, f) -> x' = a*x + b*y + c ; y' = d*x + e*y + f
+                # usamos b = shear para inclinar horizontalmente
+                try:
+                    sheared = tmp.transform(
+                        (tmp_w + int(abs(shear) * tmp_h) + 8, tmp_h),
+                        Image.AFFINE,
+                        (1, shear, 0, 0, 1, 0),
+                        resample=Image.BICUBIC,
+                    )
+                except Exception:
+                    # fallback se transform falhar
+                    sheared = tmp
+
+                # colar a imagem resultante em base_img
+                base_img.paste(sheared, (int(current_x), int(current_y)), sheared)
+
             current_y += line_height + line_spacing
 
     def render(self, output_path: str, data: dict, layout: dict) -> None:
@@ -137,7 +181,12 @@ class ImageTemplateRenderer:
                 draw.rectangle(box, outline="red", width=2)
 
             if box:
-                self._draw_centered_text(draw, text, box, font, color, valign=valign, halign=halign)
+                if box:
+                    line_spacing = config.get("line_spacing", 4)
+                    style_cfg = config.get("style", None)
+                    self._draw_centered_text(base_img, draw, text, box, font, color,
+                                             valign=valign, halign=halign,
+                                             line_spacing=line_spacing, style=style_cfg)
             else:
                 # Caso o usuario mande apenas 'pos' (x, y) fixo em vez de caixa limitadora
                 pos = config.get("pos", (0, 0))
@@ -178,7 +227,12 @@ class ImageTemplateRenderer:
                 draw.rectangle(box, outline="red", width=2)
 
             if box:
-                self._draw_centered_text(draw, text, box, font, color, valign=valign, halign=halign)
+                if box:
+                    line_spacing = config.get("line_spacing", 4)
+                    style_cfg = config.get("style", None)
+                    self._draw_centered_text(base_img, draw, text, box, font, color,
+                                             valign=valign, halign=halign,
+                                             line_spacing=line_spacing, style=style_cfg)
             else:
                 pos = config.get("pos", (0, 0))
                 draw.text(pos, text, font=font, fill=color)
