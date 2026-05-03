@@ -327,21 +327,28 @@ class TransferenciaStep1Modal(Modal, title='Transferência — Passo 1: Ofício 
     descricao = TextInput(
         label='Descricao da Transferencia',
         style=discord.TextStyle.paragraph,
-        placeholder='Edite a descricao conforme necessario',
+        placeholder='Descreva a transferência (motivação, unidades envolvidas, etc.)',
         required=True,
-        max_length=2000,
-        # use `default=` ou `value=` dependendo da sua versão do binding (troque se der erro)
+        max_length=1500,
         default=(
             "No exercício das minhas atribuições de (cargo), (Seu nome), comunico a transferência de servidores "
             "(Unidade atual), para (Unidade destino), com apoio da Superintendência da Polícia Civil.\n"
             "Os servidores abaixo passarão a compor o efetivo da (Unidade destino), ficando responsáveis pelas "
-            "atividades operacionais e administrativas da unidade:\n (Nome e passaporte dos transferidos)"
+            "atividades operacionais e administrativas da unidade:"
         )
+    )
+
+    # Label reduzido (<=45). Instruções longas movidas para placeholder.
+    membros = TextInput(
+        label='Membros transferidos',
+        style=discord.TextStyle.paragraph,
+        placeholder='Um por linha — Ex:\nJoão da Silva - 12345\nMaria Souza - 67890',
+        required=True,
+        max_length=1500
     )
 
     def __init__(self, prefill_text: str | None = None):
         super().__init__()
-        # se a lib permitir, já define o value com o texto passado
         if prefill_text:
             try:
                 self.descricao.value = prefill_text
@@ -351,13 +358,12 @@ class TransferenciaStep1Modal(Modal, title='Transferência — Passo 1: Ofício 
     async def on_submit(self, interaction: Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
 
-        # monta os dados parciais para passar ao próximo passo
         dados_base = {
             "oficio": self.oficio.value,
-            "descricao": self.descricao.value
+            "descricao": self.descricao.value,
+            "membros": self.membros.value
         }
 
-        # já adiciona data (poderia ser feita no passo final também)
         _mes_names = [
             "janeiro", "fevereiro", "março", "abril", "maio", "junho",
             "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
@@ -366,7 +372,6 @@ class TransferenciaStep1Modal(Modal, title='Transferência — Passo 1: Ofício 
         date_str = f"{now.day:02d} de {_mes_names[now.month - 1]} de {now.year}"
         dados_base["data"] = date_str
 
-        # envia view para abrir o modal de assinaturas (segundo passo)
         await interaction.followup.send(
             content="Agora informe os dados das assinaturas (duas assinaturas e seus cargos):",
             view=TransferSignaturesContinueView(dados_base),
@@ -428,8 +433,9 @@ class TransferSignaturesModal(Modal, title='Transferência — Passo 2: Assinatu
 
         # Layout sugestão (ajuste coordenadas/tamanhos conforme seu template)
         MEU_LAYOUT_TRANSFERENCIA = {
-            "oficio": {"box": (321, 98, 416, 105), "size": 15, "color": "black", "halign": "left"},
-            "descricao": {"box": (84, 221, 632, 602), "size": 15, "color": "black", "valign": "top", "halign": "left"},
+            "oficio": {"box": (325, 98, 416, 105), "size": 15, "color": "black", "halign": "left"},
+            "descricao": {"box": (84, 178, 632, 602), "size": 15, "color": "black", "valign": "top", "halign": "left"},
+            "membros": {"box": (84, 322, 632, 602), "size": 13, "color": "black", "valign": "top", "halign": "left"},
             "assinante1": {"box": (91, 717, 318, 734), "size": 14, "color": "black", "halign": "center"},
             "cargo1": {"box": (91, 748, 318, 770), "size": 13, "color": "black", "halign": "center"},
             "assinante2": {"box": (396, 717, 620, 734), "size": 14, "color": "black", "halign": "center"},
