@@ -89,7 +89,7 @@ class ResponsavelOficioModal(Modal, title='Dados do Responsavel'):
 
     oficio = TextInput(
         label='Numero do Oficio',
-        placeholder='Ex: 123/2025',
+        placeholder='Ex: 0001/2026',
         required=True,
         max_length=50
     )
@@ -263,11 +263,204 @@ async def handle_limpeza_ficha(interaction: Interaction) -> None:
     await canal.send(f"{interaction.user.mention} — aqui está seu canal temporário. Use os controles abaixo para gerar a ficha:", view=view)
 
 
+# --------- Iniciar aqui: adicionar após ResponsavelOficioModal ----------
+
+# --------- Substitua a seção de TransferView/TransferenciaModal/handle_transferencia_unidade por este bloco ----------
+
+class TransferView(View):
+    """
+    View simples que exibe um botão para abrir o modal de transferencia (passo 1).
+    Será enviada dentro do canal temporário criado para o usuário.
+    """
+    def __init__(self, prefill_text: str | None = None):
+        super().__init__(timeout=None)
+        self.prefill_text = prefill_text
+
+    @discord.ui.button(label="Preencher dados da Transferência", style=discord.ButtonStyle.primary)
+    async def open_modal(self, interaction: Interaction, button: discord.ui.Button):
+        # abre o modal do passo 1 (oficio + descricao)
+        await interaction.response.send_modal(TransferenciaStep1Modal(self.prefill_text))
+
+
 async def handle_transferencia_unidade(interaction: Interaction) -> None:
-    await interaction.response.send_message(
-        "Fluxo **Transferencia de Unidade** iniciado. (placeholder)",
-        ephemeral=True,
+    """
+    Cria canal temporario privado e envia a View que permite preencher a transferencia.
+    """
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "Este comando precisa ser usado dentro de um servidor (não em DMs).", ephemeral=True)
+        return
+
+    # Texto padrão exigido pelo usuário (já estará no campo de descricao do modal)
+    default_text = (
+        "No exercício das minhas atribuições de (cargo), (Seu nome), comunico a transferência de servidores "
+        "(Unidade atual), para (Unidade destino), com apoio da Superintendência da Polícia Civil.\n"
+        "Os servidores abaixo passarão a compor o efetivo da (Unidade destino), ficando responsáveis pelas atividades "
+        "operacionais e administrativas da unidade:\n (Nome e passaporte dos transferidos)"
     )
+
+    # cria canal temporario privado
+    try:
+        canal = await create_temp_private_channel(interaction.guild, interaction.user, name_prefix="transfer", duration=120)
+    except Exception as e:
+        await interaction.response.send_message(f"Falha ao criar canal temporario: {e}", ephemeral=True)
+        return
+
+    # informar ao usuário que o canal foi criado (ephemeral)
+    await interaction.response.send_message(f"Canal temporário criado: {canal.mention} — ele será fechado em 2 minutos.", ephemeral=True)
+
+    # enviar a mensagem com a view dentro do canal privado (view com botão que abre o modal)
+    view = TransferView(prefill_text=default_text)
+    await canal.send(
+        f"{interaction.user.mention} — aqui está seu canal temporário para Transferência de Unidade. Use o botão abaixo para preencher os dados:",
+        view=view)
+
+
+class TransferenciaStep1Modal(Modal, title='Transferência — Passo 1: Ofício e Descrição'):
+    oficio = TextInput(
+        label='Numero do Oficio',
+        placeholder='Ex: 0001/2026',
+        required=True,
+        max_length=50
+    )
+
+    descricao = TextInput(
+        label='Descricao da Transferencia',
+        style=discord.TextStyle.paragraph,
+        placeholder='Edite a descricao conforme necessario',
+        required=True,
+        max_length=2000,
+        # use `default=` ou `value=` dependendo da sua versão do binding (troque se der erro)
+        default=(
+            "No exercício das minhas atribuições de (cargo), (Seu nome), comunico a transferência de servidores "
+            "(Unidade atual), para (Unidade destino), com apoio da Superintendência da Polícia Civil.\n"
+            "Os servidores abaixo passarão a compor o efetivo da (Unidade destino), ficando responsáveis pelas "
+            "atividades operacionais e administrativas da unidade:\n (Nome e passaporte dos transferidos)"
+        )
+    )
+
+    def __init__(self, prefill_text: str | None = None):
+        super().__init__()
+        # se a lib permitir, já define o value com o texto passado
+        if prefill_text:
+            try:
+                self.descricao.value = prefill_text
+            except Exception:
+                pass
+
+    async def on_submit(self, interaction: Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        # monta os dados parciais para passar ao próximo passo
+        dados_base = {
+            "oficio": self.oficio.value,
+            "descricao": self.descricao.value
+        }
+
+        # já adiciona data (poderia ser feita no passo final também)
+        _mes_names = [
+            "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+            "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
+        ]
+        now = datetime.now()
+        date_str = f"{now.day:02d} de {_mes_names[now.month - 1]} de {now.year}"
+        dados_base["data"] = date_str
+
+        # envia view para abrir o modal de assinaturas (segundo passo)
+        await interaction.followup.send(
+            content="Agora informe os dados das assinaturas (duas assinaturas e seus cargos):",
+            view=TransferSignaturesContinueView(dados_base),
+            ephemeral=True
+        )
+
+
+class TransferSignaturesContinueView(View):
+    def __init__(self, dados_base: dict):
+        super().__init__(timeout=120)
+        self.dados_base = dados_base
+
+    @discord.ui.button(label="Preencher Assinaturas", style=discord.ButtonStyle.success)
+    async def abrir_modal_assinaturas(self, interaction: Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(TransferSignaturesModal(self.dados_base))
+
+
+class TransferSignaturesModal(Modal, title='Transferência — Passo 2: Assinaturas'):
+    assinante1 = TextInput(
+        label='Nome do Assinante 1 (obrigatorio)',
+        placeholder='Ex: João das Neves',
+        required=True,
+        max_length=100
+    )
+
+    cargo1 = TextInput(
+        label='Cargo do Assinante 1',
+        placeholder='Ex: Delegado Regional',
+        required=True,
+        max_length=100
+    )
+
+    assinante2 = TextInput(
+        label='Nome do Assinante 2 (obrigatorio)',
+        placeholder='Ex: Maria Joaquina',
+        required=True,
+        max_length=100
+    )
+
+    cargo2 = TextInput(
+        label='Cargo do Assinante 2',
+        placeholder='Ex: Escrivão DHPP',
+        required=True,
+        max_length=100
+    )
+
+    def __init__(self, dados_base: dict):
+        super().__init__()
+        self.dados_base = dados_base
+
+    async def on_submit(self, interaction: Interaction) -> None:
+        await interaction.response.defer(thinking=True)
+
+        # junta os dados finais
+        self.dados_base["assinante1"] = self.assinante1.value
+        self.dados_base["cargo1"] = self.cargo1.value
+        self.dados_base["assinante2"] = self.assinante2.value
+        self.dados_base["cargo2"] = self.cargo2.value
+
+        # Layout sugestão (ajuste coordenadas/tamanhos conforme seu template)
+        MEU_LAYOUT_TRANSFERENCIA = {
+            "oficio": {"box": (321, 98, 416, 105), "size": 15, "color": "black", "halign": "left"},
+            "descricao": {"box": (84, 221, 632, 602), "size": 15, "color": "black", "valign": "top", "halign": "left"},
+            "assinante1": {"box": (91, 717, 318, 734), "size": 14, "color": "black", "halign": "center"},
+            "cargo1": {"box": (91, 748, 318, 770), "size": 13, "color": "black", "halign": "center"},
+            "assinante2": {"box": (396, 717, 620, 734), "size": 14, "color": "black", "halign": "center"},
+            "cargo2": {"box": (360, 748, 649, 770), "size": 13, "color": "black", "halign": "center"},
+            "data": {"box": (335, 891, 550, 896), "size": 15, "color": "black", "valign": "center", "halign": "left"},
+        }
+
+        # template: ajuste para o arquivo que desejar (base.png ou base2.png)
+        template_path = "img/base2.png" if os.path.exists("img/base2.png") else "img/base.png"
+        renderer = ImageTemplateRenderer(template_path, debug=False)
+
+        image_bytes = renderer.render_bytes(self.dados_base, MEU_LAYOUT_TRANSFERENCIA, fmt="PNG")
+        file_obj = io.BytesIO(image_bytes)
+        file_obj.seek(0)
+        discord_file = discord.File(file_obj, filename="transferencia.png")
+
+        channel = interaction.channel
+        delete_view = DeleteChannelView(channel, owner_id=interaction.user.id)
+
+        await interaction.followup.send(
+            content="Transferência gerada com sucesso! Use o botão abaixo para encerrar este canal antes de 2 minutos, se desejar.",
+            file=discord_file,
+            view=delete_view
+        )
+
+        # agenda exclusão do canal (mesmo comportamento da limpeza)
+        if channel is not None:
+            task = asyncio.create_task(schedule_delete_channel(channel, delay_seconds=120))
+            scheduled_deletes[channel.id] = task
+
+# --------- Fim da substituição ----------
 
 async def create_temp_private_channel(guild: discord.Guild, user: discord.Member, *,
                                       name_prefix: str = "anon", duration: int = 120) -> discord.TextChannel:
